@@ -1,0 +1,10 @@
+#!/bin/bash
+duration=$1
+shift
+cmd="$@"
+timeout --kill-after=10s $duration $cmd
+exit_code=$?
+if [ $exit_code -eq 124 ]; then
+    echo ">>>[超时提示] 命令 '$cmd' 运行超过 $duration 后被终止"
+fi
+exit $exit_code

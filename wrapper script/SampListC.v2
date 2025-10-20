@@ -1,0 +1,140 @@
+#!/bin/bash
+
+####################################
+### Params 
+####################################
+# Global params
+WorkDir="$(pwd)/"
+CacheDir="${WorkDir}/tmp"
+mkdir -p "$CacheDir"
+
+# 默认值
+FinalTxt=""
+Suffix="fq.gz"  # 默认文件后缀
+Fq1Suffix="R1"  # 默认Fq1后缀
+Fq2Suffix="R2"  # 默认Fq2后缀
+
+# 显示帮助信息
+show_help() {
+    echo "USAGE: $0 [OPTIONS]"
+    echo "Need in target workdir, support fasta or paired-end reads"
+    echo "OPTIONS:"
+    echo "  -f, --final=<文件名>    设置最终文件名（必须）"
+    echo "  -s, --suffix=<后缀>     设置文件后缀（默认：fq.gz, fasta文件只需要指定 -s fa/fasta）"
+    echo "  -1, --fq1-suffix=<后缀> 设置Fq1的后缀（默认：R1）"
+    echo "  -2, --fq2-suffix=<后缀> 设置Fq2的后缀（默认：R2）"
+    echo "  -h, --help              显示此帮助信息"
+    exit 0
+}
+
+# 处理命名参数
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -f|--final)
+            FinalTxt="$2"
+            shift 2
+            ;;
+        -s|--suffix)
+            Suffix="$2"
+            shift 2
+            ;;
+        -1|--fq1-suffix)
+            Fq1Suffix="$2"
+            shift 2
+            ;;
+        -2|--fq2-suffix)
+            Fq2Suffix="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            ;;
+        *)
+            echo "错误: 无效选项: $1" >&2
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+# 校验必要参数
+if [[ -z "$FinalTxt" ]]; then
+    echo "错误: 必须指定最终文件名（-f 或 --final）" >&2
+    show_help
+    exit 1
+fi
+
+# 输出参数值
+echo "=============================="
+echo "参数配置:"
+echo "  FinalTxt: $FinalTxt"
+echo "  Suffix: $Suffix"
+echo "  Fq1Suffix: $Fq1Suffix"
+echo "  Fq2Suffix: $Fq2Suffix"
+echo "  WorkDir: $WorkDir"
+echo "  CacheDir: $CacheDir"
+echo "=============================="
+
+######################################################
+### 检测输入文件类型并处理
+######################################################
+# 检测模式
+echo "检测输入文件类型..."
+if ls *${Fq1Suffix}.${Suffix} 1> /dev/null 2>&1; then
+    mode="paired"
+    echo "检测到双端测序文件，进入 paired 模式"
+elif ls *.${Suffix} 1> /dev/null 2>&1; then
+    mode="fasta"
+    echo "检测到FASTA文件，进入 fasta 模式"
+else
+    echo "错误：未找到后缀为 ${Suffix} 的输入文件"
+    exit 1
+fi
+
+######################################################
+### 根据模式生成样本列表和文件路径
+######################################################
+if [ "$mode" = "paired" ]; then
+    # 生成样本名列表（双端模式）
+    echo "正在生成样本名列表（双端模式）..."
+    ls *${Fq1Suffix}.${Suffix} | sed "s/_${Fq1Suffix}\.${Suffix}//g" > "${CacheDir}/cache_samples.txt"
+
+    # 生成Fq1文件列表
+    echo "正在生成Fq1文件列表..."
+    ls *${Fq1Suffix}.${Suffix} > "${CacheDir}/cache_fq1.txt"
+
+    # 生成Fq2文件列表
+    echo "正在生成Fq2文件列表..."
+    ls *${Fq2Suffix}.${Suffix} > "${CacheDir}/cache_fq2.txt"
+
+    # 合并样本名和文件路径
+    echo "正在合并样本名和文件路径（双端模式）..."
+    paste -d "\t" "${CacheDir}/cache_samples.txt" "${CacheDir}/cache_fq1.txt" "${CacheDir}/cache_fq2.txt" > "${CacheDir}/cache_combined.txt"
+
+    # 添加工作目录路径并生成最终文件
+    echo "正在生成最终文件（三列格式）..."
+    cat "${CacheDir}/cache_combined.txt" | awk -v dir="$WorkDir" '{print $1"\t"dir$2"\t"dir$3}' > "$FinalTxt"
+
+elif [ "$mode" = "fasta" ]; then
+    # 生成样本名列表（FASTA模式）
+    echo "正在生成样本名列表（FASTA模式）..."
+    ls *.${Suffix} | sed "s/\.${Suffix}$//g" > "${CacheDir}/cache_samples.txt"
+
+    # 生成FASTA文件列表
+    echo "正在生成FASTA文件列表..."
+    ls *.${Suffix} > "${CacheDir}/cache_files.txt"
+
+    # 合并样本名和文件路径
+    echo "正在合并样本名和文件路径（FASTA模式）..."
+    paste -d "\t" "${CacheDir}/cache_samples.txt" "${CacheDir}/cache_files.txt" > "${CacheDir}/cache_combined.txt"
+
+    # 添加工作目录路径并生成最终文件
+    echo "正在生成最终文件（两列格式）..."
+    cat "${CacheDir}/cache_combined.txt" | awk -v dir="$WorkDir" '{print $1"\t"dir$2}' > "$FinalTxt"
+fi
+
+# 清理缓存目录
+echo "正在清理缓存文件..."
+rm -rf "$CacheDir"
+
+echo "脚本运行完成！最终文件已保存为: $FinalTxt"

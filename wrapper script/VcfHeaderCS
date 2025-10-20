@@ -1,0 +1,23 @@
+#!/bin/bash
+
+input=$1
+output=$2
+
+# 分离表头和数据
+grep '^##' $input > header.vcf
+grep -v '^##' $input > body.vcf
+
+# 处理contig行
+grep '^##contig' header.vcf | sort -t '=' -k3 -n > sorted_contigs.vcf
+grep -v '^##contig' header.vcf > other_header.vcf
+cat other_header.vcf sorted_contigs.vcf > new_header.vcf
+
+# 排序数据行
+(head -n 1 body.vcf && tail -n +2 body.vcf | sort -k1,1V -k2,2n) > sorted_body.vcf
+
+# 合并文件
+cat new_header.vcf sorted_body.vcf > $output
+
+# 清理临时文件
+rm header.vcf body.vcf sorted_contigs.vcf other_header.vcf sorted_body.vcf
+

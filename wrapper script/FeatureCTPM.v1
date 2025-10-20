@@ -1,0 +1,48 @@
+#!/usr/bin/env Rscript
+
+################################################################################################################
+### Load required packages
+################################################################################################################
+library(optparse)
+
+################################################################################################################
+### Paramas
+################################################################################################################
+# 设置命令行参数
+option_list <- list(
+  make_option(c("-i", "--input"), type="character", default=NULL, help="Input file (featureCounts output)."),
+  make_option(c("-o", "--output"), type="character", default=NULL, help="Output file (TPM results).")
+)
+opt_parser <- OptionParser(option_list=option_list)
+args <- parse_args(opt_parser)
+
+# 检查输入参数
+if (is.null(args$input) || is.null(args$output)) {
+  print_help(opt_parser)
+  stop("Input and output files must be provided.", call.=FALSE)
+}
+
+################################################################################################################
+### Running
+################################################################################################################
+# 读取输入文件
+data <- read.table(args$input, header=TRUE, sep="\t")
+
+# 获取样品列名（从第 7 列开始）
+samples <- colnames(data)[7:ncol(data)]
+
+# 计算每个样品的 TPM
+for (sample in samples) {
+  # 计算 RPK
+  rpk <- data[[sample]] / (data$Length / 1000)
+  # 计算 RPK 总和
+  rpk_sum <- sum(rpk)
+  
+  # 计算 TPM, 覆盖原列
+  data[[sample]] <- (rpk / rpk_sum) * 1e6
+}
+
+# 保存结果到输出文件
+write.table(data, args$output, sep="\t", row.names=FALSE, quote=FALSE)
+print(paste("TPM calculation complete. Results saved to", args$output))
+

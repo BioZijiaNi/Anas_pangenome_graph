@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""
+Date:2025/3/13
+Developer: DeepSeek R1
+Test & Debug: Zijia Ni
+"""
+
+"""
+生成式:
+帮我写一个，
+根据minimap2的genomeA（为Reference）和genomeB的比对结果，
+如果遇到大量的反转（默认为50%，可以提供参数调整），
+根据Reference的方向自动调整对应染色体，生成反向互补序列，最终输出调整后的genomeB，并打印调整了哪几条染色体
+"""
+
+"""
+基因组染色体方向校正脚本（正确解析PAF的Query列）
+用法：python adjust_genome.py --paf <input.paf> --genomeB <genomeB.fasta> --output <adjusted.fasta>
+"""
+
+import argparse
+from collections import defaultdict
+from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord
+
+def parse_paf(paf_file, threshold):
+    """解析PAF文件，提取Query（基因组B）染色体名及方向"""
+    query_stats = defaultdict(lambda: {'total':0, 'reverse':0})
+    
+    with open(paf_file) as f:
+        for line in f:
+            cols = line.strip().split('\t')
+            if len(cols) < 11: continue
+            
+            # 关键修正：提取第1列（Query名称）和第5列（方向）
+            query_name = cols[0].split()[0]  # 第1列，取第一个字段
+            direction = cols[4]              # 第5列
+            block_len = int(cols[10])        # 第11列（比对块长度）
+            
+            # 统计每个Query的比对信息
+            query_stats[query_name]['total'] += block_len
+            if direction == '-':
+                query_stats[query_name]['reverse'] += block_len
+    
+    # 判断需要调整的染色体
+    adjust_list = {}
+    for query, stats in query_stats.items():
+        if stats['total'] == 0: continue
+        ratio = stats['reverse'] / stats['total']
+        if ratio >= threshold:
+            adjust_list[query] = ratio
+    return adjust_list
+
+def adjust_genome(genome_file, adjust_list, output_file):
+    """生成反向互补序列并写入文件"""
+    adjusted_records = []
+    
+    for record in SeqIO.parse(genome_file, "fasta"):
+        if record.id in adjust_list:
+            new_seq = str(record.seq.reverse_complement())
+            new_desc = f"{record.description}"
+            adjusted_records.append(SeqRecord(new_seq, id=record.id, description=new_desc))
+        else:
+            adjusted_records.append(record)
+    
+    with open(output_file, "w") as f:
+        SeqIO.write(adjusted_records, f, "fasta")
+
+def main():
+    parser = argparse.ArgumentParser(description="基因组染色体方向校正工具（基于PAF Query方向）")
+    parser.add_argument("--paf", required=True, help="minimap2生成的PAF文件")
+    parser.add_argument("--genomeB", required=True, help="待调整的基因组B FASTA文件")
+    parser.add_argument("--output", required=True, help="调整后的输出文件")
+    parser.add_argument("--threshold", type=float, default=0.5, help="反向比对比例阈值")
+    parser.add_argument("--log", default="adjustment.log", help="日志文件")
+    args = parser.parse_args()
+
+    adjust_list = parse_paf(args.paf, args.threshold)
+    adjust_genome(args.genomeB, adjust_list, args.output)
+    
+    # 写入日志
+    with open(args.log, "w") as f:
+        f.write(f"Threshold: {args.threshold:.0%}\n")
+        f.write("Adjusted chromosomes:\n")
+        for chrom, ratio in adjust_list.items():
+            f.write(f"{chrom}\tReverse ratio: {ratio:.2f}\n")
+
+if __name__ == "__main__":
+    main()
