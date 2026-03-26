@@ -1,0 +1,107 @@
+#!/bin/bash
+
+# 脚本名称: summarize_admixture_q_auto_v2.sh
+# 功能: 自动识别待测个体，计算 .Q 文件的 q1 和 q2 平均值。
+
+# --- 脚本使用说明 ---
+function usage() {
+    echo "Usage: $0 <q_file_directory> <supervised_fam_path> [output_csv_file]"
+    echo ""
+    echo "  <q_file_directory>    : 包含所有 ADMIXTURE '.2.Q' 文件的目录 (例如: windows/)"
+    echo "  <supervised_fam_path> : 包含群体标记的 PLINK .fam 文件路径"
+    echo "  [output_csv_file]     : 输出的 CSV 文件名 (默认为: combined_admixture_results.csv)"
+    exit 1
+}
+
+# --- 参数解析 ---
+Q_DIR="$1"
+FAM_FILE="$2"
+OUTPUT_FILE="${3:-combined_admixture_results.csv}"
+
+# 检查参数
+if [ -z "$Q_DIR" ] || [ -z "$FAM_FILE" ]; then
+    usage
+fi
+
+if [ ! -d "$Q_DIR" ]; then
+    echo "Error: Directory '$Q_DIR' not found."
+    exit 1
+fi
+
+if [ ! -f "$FAM_FILE" ]; then
+    echo "Error: FAM file '$FAM_FILE' not found."
+    exit 1
+fi
+
+# --- 自动确定起始和结束行号 ---
+echo "--- 自动识别待测个体行号 ---"
+
+# 使用 awk 筛选第 6 列为 -9 的行，并打印行号
+TARGET_LINES=$(awk '$6 == -9 {print NR}' "$FAM_FILE")
+
+# 检查是否找到任何待测个体
+if [ -z "$TARGET_LINES" ]; then
+    echo "Error: No individuals found with phenotype code -9 in the FAM file (assuming -9 is Italian Sparrow)."
+    exit 1
+fi
+
+START_LINE=$(echo "$TARGET_LINES" | head -n 1)
+END_LINE=$(echo "$TARGET_LINES" | tail -n 1)
+NUM_INDIVIDUALS=$(echo "$TARGET_LINES" | wc -l)
+
+echo "FAM File: $FAM_FILE"
+echo "Identified $NUM_INDIVIDUALS Italian Sparrow individuals (Code -9)."
+echo "Target lines (START:END): $START_LINE : $END_LINE"
+echo "--------------------------------------------------------"
+
+# --- 主程序逻辑 ---
+
+# 1. 修改 CSV 文件头，添加 Mean_q2
+echo "Window_ID,Chromosome,Start_Position,Mean_q1,Mean_q2" > "$OUTPUT_FILE"
+
+COUNT=0
+for Q_FILE in "$Q_DIR"/*.2.Q; do
+    
+    if [ ! -s "$Q_FILE" ]; then
+        continue
+    fi
+    
+    # 1. 提取窗口信息 (基于 window_chrX_START_END.2.Q 格式)
+    WINDOW_INFO=$(basename "$Q_FILE" .2.Q)
+    
+    IFS='_' read -ra PARTS <<< "$WINDOW_INFO"
+    
+    CHR=${PARTS[1]#chr}
+    START_POS=${PARTS[2]}
+    
+    # 2. 从 .Q 文件中，提取指定行范围的第一列（q1）并计算平均值
+    MEAN_Q1=$(awk -v S="$START_LINE" -v E="$END_LINE" '{
+        if (NR >= S && NR <= E) {
+            sum += $1;
+            count++;
+        }
+    } END {
+        if (count > 0) {
+            printf "%.6f", sum / count;
+        } else {
+            print "NA";
+        }
+    }' "$Q_FILE")
+
+    # 3. 计算 Mean_q2 (仅当 Mean_q1 成功计算时)
+    if [ "$MEAN_Q1" != "NA" ]; then
+        # 使用 bc 进行浮点数计算：Mean_q2 = 1 - Mean_q1
+        MEAN_Q2=$(echo "scale=6; 1 - $MEAN_Q1" | bc)
+    else
+        MEAN_Q2="NA"
+    fi
+
+    # 4. 写入结果 CSV，添加 Mean_q2
+    echo "${WINDOW_INFO},${CHR},${START_POS},${MEAN_Q1},${MEAN_Q2}" >> "$OUTPUT_FILE"
+    COUNT=$((COUNT + 1))
+    
+done
+
+echo "--------------------------------------------------------"
+echo "Summary complete. Processed $COUNT files."
+echo "Results saved to: $OUTPUT_FILE"
