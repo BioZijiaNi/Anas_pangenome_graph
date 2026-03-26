@@ -67,7 +67,6 @@ Ref=/home2/nizijia/repository/1.B.9.Pekin_C18_ZJU1.0_W_genome/BJ_ZJU1.0_W.fa
 ##################################################################
 ##################### RUNNING SCRIPTS ############################
 ##################################################################
-<<EOF
 #####################################
 ##### 01 Reads QC
 #####################################
@@ -127,9 +126,8 @@ fq2=${arr[2]}
 '
 ### Multi-sample qc report
 multiqc $FilteredQCDir/ -n filtered_reads_QC_report -o $CacheDir -f
-EOF
 
-<<EOF
+
 ###################################
 ##### 02 Alignment
 ###################################
@@ -181,13 +179,10 @@ samtools index -@ '"$Threads"' '"$AlignmentDir"'/${sample}_ngs_mapped.bwa.markdu
 # Remove sort.bam file
 rm '"$AlignmentDir"'/${sample}_ngs_mapped.bwa.sort.bam'
 
-EOF
-
 
 ##################################################################
 ##################### 03 PREPARATION (DICT) ######################
 ##################################################################
-<<EOF
 # GATK 需要参考基因组的 .dict 文件 (不仅仅是 .fai)
 # 检查是否存在，不存在则生成
 RefDict="${Ref%.*}.dict"
@@ -197,12 +192,10 @@ if [ ! -f "$RefDict" ]; then
         -R $Ref \
         -O $RefDict
 fi
-EOF
 
 ##################################################################
 ##################### 04 GATK HaplotypeCaller ####################
 ##################################################################
-<<EOF
 # 直接使用 markdup.bam 进行变异检测
 # 输出为 GVCF 格式，用于后续多样本联合分析
 
@@ -230,12 +223,10 @@ else
     echo "Error: BAM file for $sample not found at $INPUT_BAM"
 fi
 '
-EOF
 
 ##################################################################
 ##################### 05 JOINT GENOTYPING ########################
 ##################################################################
-<<EOF
 # 设置本阶段特有变量
 DB_Path="$CacheDir/GenomicsDB"
 RawVCF="$PopVCFDir/cohort_raw.vcf.gz"
@@ -283,12 +274,10 @@ gatk --java-options "-Xmx$MEM" GenotypeGVCFs \
     -V gendb://$DB_Path \
     -O $RawVCF \
     --tmp-dir $TmpDir
-EOF
 
 ##################################################################
 ##################### 06 VARIANT FILTERING #######################
 ##################################################################
-<<EOF
 echo "##### Filtering Variants (Hard Filtering) #####"
 
 # 6.1 提取并过滤 SNPs
@@ -321,13 +310,10 @@ gatk SelectVariants \
     -O $FinalVCF
 
 echo "##### Pipeline Finished! Final VCF: $FinalVCF #####"
-EOF
-
 
 ##################################################################
 ##################### 06 VARIANT FILTERING (Parallel) #######################
 ##################################################################
-
 # 变量定义 (确保这些变量在上文已经定义好)
 RawVCF="$PopVCFDir/cohort_raw.vcf.gz"
 FinalVCF="$PopVCFDir/cohort_final_PASS.vcf.gz"
@@ -335,7 +321,6 @@ FinalVCF="$PopVCFDir/cohort_final_PASS.vcf.gz"
 FilteringParallel=4
 ChromMem="8g"
 
-<<EOF
 echo "##### Starting Parallel Filtering for 170+ Scaffolds #####"
 # 1. 获取序列列表
 # 确保 Ref 变量指向正确，且 .fai 文件存在
@@ -426,13 +411,10 @@ gatk --java-options "-Xmx16g" MergeVcfs \
 rm $PopVCFDir/tmp_*_final.vcf.gz* $PopVCFDir/all_scaffolds.list
 
 echo "##### Hard Filtering Finished! Final File: $FinalVCF #####"
-EOF
-
 
 ##################################################################
 ##################### 07 POPULATION VCF QC #######################
 ##################################################################
-<<EOF
 echo "##### Starting Population-level Filtering #####"
 
 # 定义输入（接上一步 GATK 的 FinalVCF）
@@ -471,12 +453,10 @@ bcftools view -r $R_STRING -Oz \
 $PopulationDir/merge_population_snps.filtered.vcf.gz
 
 bcftools index -f $PopulationDir/merge_population_snps.filtered.autosomes.vcf.gz --force
-EOF
 
 ##################################################################
 ##################### 08 PCA ANALYSIS ############################
 ##################################################################
-<<EOF
 echo "##### Converting to PLINK and LD Pruning #####"
 
 # 创建性染色体映射文件 (将数字编号映射到 PLINK 识别的性染色体代码)
@@ -525,12 +505,10 @@ plink --bfile $PopulationDir/allsnp_filter \
     --chr-set 39 \
     --allow-extra-chr \
     --out $PopulationDir/pca_result
-EOF
 
 ##################################################################
 ##################### 09 ADMIXTURE ANALYSIS ######################
 ##################################################################
-<<EOF
 echo "##### Running Admixture Analysis #####"
 mkdir -p $CacheDir/admixture_folder
 cd $CacheDir/admixture_folder
@@ -559,7 +537,6 @@ do
 done
 
 echo "##### Pipeline Analysis Finished! #####"
-EOF
 
 ################################################################
 ##### 10. 100kb bin admixture
@@ -636,7 +613,6 @@ AdmixtureWindow.sh \
     $BADir/allsnp_for_binAM.update.fam \
     $AMWDir \
     $BADir/100kb_windows.bed
-
 
 # --- 2.5 汇总结果 ---
 # 数据都在代码运行的目录下面

@@ -92,6 +92,7 @@ truvari bench \
 -o $CompResDir \
 --typeignore
 
+<<EOF
 ####################################################
 ##### 03 Graph VCF stats
 # Output: $CacheDir/${graph}.SVs.repmask.anno.vcf.query
@@ -111,6 +112,7 @@ bcftools view $CacheDir/${graph}.SVs.repmask.anno.vcf.gz \
 | truvari anno svinfo \
 | bcftools query -f '%length.alt\t%length.ref\t%length\t%SVTYPE\t%LCR\t%RM_clsfam\t%RM_repeat\t%RM_score\n' > $CacheDir/${graph}.SVs.repmask.anno.vcf.query
 done
+EOF
 
 ##################################################################
 ##### 04 Variants source
